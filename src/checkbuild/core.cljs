@@ -8,6 +8,7 @@
   (:require-macros
      [checkbuild.macros :as mac]))
 
+
 (defn h []
   (checkbuild.onery/this-is-stupid-really)
   (helper/helper))
@@ -15,6 +16,7 @@
 
 
 (enable-console-print!)
+
 
 
 ;; define your app data so that it doesn't get over-written on reload

@@ -8,9 +8,14 @@
    [cljs.compiler]
    [cljs.closure :as cljsc]
    [clojure.set :refer [intersection]]
-   [clojure.java.io :refer [as-file file]]))
+   [clojure.java.io :refer [file] :as io]))
 
-(def e (env/default-compiler-env {}))
+;; debug
+(defn l [x]
+  (p/pprint x)
+  x)
+
+;; tried to move the stuff that needs another look to the top of the file
 
 ;; from cljsbuild
 (defrecord SourcePaths [paths]
@@ -37,7 +42,23 @@
   ;; XXX try catch needed here
   (load (drop-extension (relativize file-resource))))
 
+;; should be able to reuse something here with out including tons of deps
+(defn ns-from-file [f]
+  (try
+    (when (.exists f)
+      (with-open [rdr (io/reader f)]
+        (-> (java.io.PushbackReader. rdr)
+            read
+            second)))
+    ;; better exception here eh?
+    (catch java.lang.RuntimeException e
+      nil)))
 
+#_(defn cljs-target-file [opts cljs-file]
+  (util/to-target-file (cljs.closure/output-directory opts)
+                       (ana/parse-ns cljs-file)))
+
+;; how fast is file-seq?
 (defn files-like* [ends-with dir]
   (map (fn [f] {:source-dir (file dir)
                :source-file f })
@@ -53,67 +74,70 @@
   (files-like ".clj" dirs))
 
 (defn macro-file?
-  "Super innacurate but the cost of being wrong is minimal."
+  "Super innacurate but the cost of being wrong here is minimal."
   [f] (.contains (slurp (:source-file f)) "(defmacro"))
 
 (defn annotate-macro-file [f]
   (assoc f :macro-file? (macro-file? f)))
 
-;; api call
-(defn get-macro-dependants-from-namespaces
-  "Given a set of macro namespaces return a bunch of a"
-  [nmspaces]
-  (map (fn [{:keys [name require-macros]}] {:name name :require-macros (set (vals require-macros))})
-       (filter (fn [x] (not-empty (intersection nmspaces (-> x :require-macros vals set))))
-               (vals (:cljs.analyzer/namespaces @e)))))
+;; POTENTIAL API call
+(defn macro-dependants-for-namespaces
+  "Given a list of clj macro namespace symbols return set of dependant cljs ns symbols."
+  [namespaces]
+  (map :name
+       (let [namespaces-set (set namespaces)]
+         (filter (fn [x] (not-empty (intersection namespaces-set (-> x :require-macros vals set))))
+                 (vals (:cljs.analyzer/namespaces @env/*compiler*))))))
 
-;; this is only for clj files
-;; this needs to be fixed 
-(defn get-clj-ns [x] (-> x :source-file ana/parse-ns :ns))
-
-(defn get-clj-namespaces [file-resources]
-  (set (map get-clj-ns file-resources)))
-
-;; this gets cljs dependant ns for macro files
-(defn get-macro-dependants [env-atom macro-file-resources]
-  (let [namespaces (get-clj-namespaces macro-file-resources)]
-    (set (map :name (get-macro-dependants-from-namespaces env-atom namespaces)))))
-
-;; this makes me think we can do a double dispatch api based around
-;; namespaces
-;; API call
-(defn compile-data-from-ns [env-atom ns-sym]
+;; POTENTIAL API call
+;; we can reshape the result and augment it with a :name key
+;; to standardize the api
+(defn compile-data-for-ns
+  "Given a namspace symbol return a map of compile data for that namespace."
+  [ns-sym]
   (second
    (first
     (filter (fn [[k v]]
               (contains? (set (:provides v)) (cljs.compiler/munge (name ns-sym))))
-            (:cljs.closure/compiled-cljs @env-atom)))))
+            (:cljs.closure/compiled-cljs @env/*compiler*)))))
 
-;; api function
-(defn get-source-file-from-ns [env-atom ns-sym]
+;; this is only for clj files
+;; this needs to be fixed 
+(defn get-clj-ns [x] (-> x :source-file ns-from-file))
+
+(defn get-clj-namespaces [file-resources]
+  (map get-clj-ns file-resources))
+
+;; this gets cljs dependant ns for macro files
+(defn macro-dependants [macro-file-resources]
+  (let [namespaces (get-clj-namespaces macro-file-resources)]
+    (macro-dependants-for-namespaces namespaces)))
+
+(defn get-source-file-from-ns [ns-sym]
   ;; should probably use ISourceMap for this
-  (file (:source-url (compile-data-from-ns env-atom ns-sym))))
+  (file (:source-url (compile-data-for-ns ns-sym))))
 
-(defn touch-source-file-for-ns! [env-atom ns-sym]
-  (let [s (get-source-file-from-ns env-atom ns-sym)]
+(defn touch-source-file-for-ns! [ns-sym]
+  (let [s (get-source-file-from-ns ns-sym)]
     (.setLastModified s (System/currentTimeMillis))))
 
-;; this could change based on the compiler implementation
-(def mark-for-recompile! touch-source-file-for-ns!)
+(defn mark-known-dependants-for-recompile! [file-resources]
+  (doseq [ns-sym (macro-dependants file-resources)]
+    (touch-source-file-for-ns! ns-sym)))
 
-(defn mark-known-dependants-for-recompile! [env-atom file-resources]
-  (doseq [ns-sym (get-macro-dependants env-atom file-resources)]
-    (mark-for-recompile! env-atom ns-sym)))
+;; tracking compile times
+(defn compiled-at-marker [opts]
+  ;; there is an oportunity here to make this a unique marker
+  (file (cljs.closure/output-directory opts) ".cljs-last-compiled-at"))
 
-(defn mtime [f] (if (.exists f) (.lastModified f) 0))
+(defn last-compile-time [opts]
+  (.lastModified (compiled-at-marker opts)))
 
-(defn last-compile-time [{:keys [output-to] :as opts}] (mtime (file output-to)))
-
-;; so there is the case where known macro files have changed but on
-;; disk a cljs source file newly requires a macro file which has also
-;; changed, how can I reliably tell if this macro file has changed?
-;; Seems better to compare the macro file against its previously
-;; recorded mtime, this is much faster, but perhaps can race?
+(defn touch-or-create-file [f timest]
+  (when-not (.exists f)
+    (.mkdirs f)
+    (.createNewFile f))
+  (.setLastModified f timest))
 
 (defn get-changed-files [file-resources since-time]
   (filter (fn [x] (> (.lastModified (:source-file x)) since-time))
@@ -125,8 +149,6 @@
     {:macro-files     (clj-file-map true)
      :non-macro-files (clj-file-map false) }))
 
-;; relading helpers
-
 (defn macro-files-to-reload [src-dirs since-time]
   ;; if a clj file has changed
   ;; return all macro files
@@ -137,12 +159,18 @@
               clj-files
               changed-clj-files))))
 
-;; the only option that we are counting on here is :output-to
-;; need to ensure that we can handle a blank :output-to
-(defn build-multiple
-  "A cljs builder that handles incremental .clj file changes."
+(defn build-multiple-root
+  "Builds ClojureScript source directories incrementally. It is
+   sensitive to changes in .clj in your .cljs source directories files
+   and provides a fast incremental compile if a .clj file changes.
+   This build is wrapper around cljs.closure/build and as such it
+   takes all the options that cljsc/build takes. It does not alter any
+   of the options you are sending to build.
+
+   The only difference from build is that build-multiple-root takes a list of
+   source directories as its first argument."
   ([src-dirs opts]
-     (build-multiple src-dirs opts
+     (build-multiple-root src-dirs opts
                      (if-not (nil? env/*compiler*)
                        env/*compiler*
                        (env/default-compiler-env opts))))
@@ -153,32 +181,41 @@
          (when (not-empty changed-macro-files)
            (doseq [macro-file changed-macro-files]
              (reload-lib macro-file))
-           (mark-known-dependants-for-recompile! e changed-macro-files))
+           (mark-known-dependants-for-recompile! changed-macro-files))
 
          (cljsc/build (SourcePaths. src-dirs) opts compiler-env)
-         (.setLastModified (file (:output-to opts)) started-at)))))
+         (touch-or-create-file (compiled-at-marker opts) started-at)))))
 
 ;; from here down is only for dev
 
+(def e (env/default-compiler-env options))
+
 (comment
-
-
 
   (clj-files-in-dirs ["src"])
   (get-changed-files (clj-files-in-dirs ["src"]) (last-compile-time {:output-to "outer/checkbuild.js"}))
+  (touch-or-create-file (compiled-at-marker {}) (System/currentTimeMillis))
   (map annotate-macro-file (clj-files-in-dirs ["src"]))
-  (group-by :macro-file? (map annotate-macro-file (clj-files-in-dirs ["src"])))
   (group-clj-macro-files   (clj-files-in-dirs ["src"]))
   (macro-files-to-reload ["src"] (last-compile-time {:output-to "outer/checkbuild.js"}))
 
-  (get-dependants
-   (macro-files-to-reload ["src"] (last-compile-time {:output-to "outer/checkbuild.js"})))
+  (env/with-compiler-env e
+    (macro-dependants-for-namespaces ['checkbuild.macros-again]))
 
-  (build* ["src/checkbuild/core.cljs"] {} (env/default-compiler-env))
+  (env/with-compiler-env e
+    (macro-dependants-for-namespaces ['checkbuild.macros]))
+  
+  (env/with-compiler-env e
+    (macro-dependants
+     (macro-files-to-reload ["src"] (last-compile-time {:output-to "outer/checkbuild.js"}))))
+
+  (env/with-compiler-env e 
+    (macro-dependants (:macro-files (group-clj-macro-files (clj-files-in-dirs ["src"])))))
+
+  (build* ["src"] {} (env/default-compiler-env))
   
   
-  (build ["src"])
-  )
+  (build ["src"]))
 
 (def options { :output-to "outer/checkbuild.js"
                :output-dir "outer/out"
