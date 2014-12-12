@@ -1,4 +1,4 @@
-(ns builder.core
+(ns clojurescript-build.core
   (:require
    [clojure.pprint :as p]
    [cljs.env :as env]
@@ -161,8 +161,14 @@
 
 (defn build-multiple-root
   "Builds ClojureScript source directories incrementally. It is
-   sensitive to changes in .clj in your .cljs source directories files
-   and provides a fast incremental compile if a .clj file changes.
+   sensitive to changes in .clj in your .cljs source directories files.
+
+   .cljs files that are dependent on changed .clj files will be marked
+   for recompilation.
+ 
+   This build function provides a very fast compile time if you are modifying .clj
+   files.
+
    This build is wrapper around cljs.closure/build and as such it
    takes all the options that cljsc/build takes. It does not alter any
    of the options you are sending to build.
@@ -186,12 +192,37 @@
          (cljsc/build (SourcePaths. src-dirs) opts compiler-env)
          (touch-or-create-file (compiled-at-marker opts) started-at)))))
 
+(defn js-files-that-can-change-build [opts]
+  (->> (or (:libs opts) [])
+       (files-like ".js")
+       (remove #(.startsWith (.getPath (:source-file %))
+                             (cljs.closure/output-directory opts)))
+       (remove #(and
+                 (:output-to opts)
+                 (.endsWith (.getPath (:source-file %))
+                            (:output-to opts))))))
+
+(defn files-that-can-change-build [src-dirs opts]
+  ;; only .cljs, .clj, and :libs files can change build
+  (let [cljs-files (files-like ".cljs" src-dirs)
+        clj-files  (files-like ".clj" src-dirs)
+        js-files   (if (:libs opts)
+                     (js-files-that-can-change-build opts)
+                     [])]
+    (concat cljs-files clj-files js-files)))
+
+
+
+
+
 ;; from here down is only for dev
 
 (def e (env/default-compiler-env options))
 
 (comment
 
+  (js-files-that-can-change-build (assoc options :libs ["outer/out"]))
+  
   (clj-files-in-dirs ["src"])
   (get-changed-files (clj-files-in-dirs ["src"]) (last-compile-time {:output-to "outer/checkbuild.js"}))
   (touch-or-create-file (compiled-at-marker {}) (System/currentTimeMillis))
@@ -215,7 +246,8 @@
   (build* ["src"] {} (env/default-compiler-env))
   
   
-  (build ["src"]))
+  (build ["resources/src"])
+  )
 
 (def options { :output-to "outer/checkbuild.js"
                :output-dir "outer/out"
