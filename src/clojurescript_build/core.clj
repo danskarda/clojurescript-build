@@ -38,6 +38,7 @@
       (subs path (count parent))
       path)))
 
+
 (defn reload-lib [file-resource]
   ;; XXX try catch needed here
   (load (drop-extension (relativize file-resource))))
@@ -217,51 +218,7 @@
 
 ;; from here down is only for dev
 
-(def e (env/default-compiler-env options))
 
-(comment
-
-  (js-files-that-can-change-build (assoc options :libs ["outer/out"]))
-  
-  (clj-files-in-dirs ["src"])
-  (get-changed-files (clj-files-in-dirs ["src"]) (last-compile-time {:output-to "outer/checkbuild.js"}))
-  (touch-or-create-file (compiled-at-marker {}) (System/currentTimeMillis))
-  (map annotate-macro-file (clj-files-in-dirs ["src"]))
-  (group-clj-macro-files   (clj-files-in-dirs ["src"]))
-  (macro-files-to-reload ["src"] (last-compile-time {:output-to "outer/checkbuild.js"}))
-
-  (env/with-compiler-env e
-    (macro-dependants-for-namespaces ['checkbuild.macros-again]))
-
-  (env/with-compiler-env e
-    (macro-dependants-for-namespaces ['checkbuild.macros]))
-  
-  (env/with-compiler-env e
-    (macro-dependants
-     (macro-files-to-reload ["src"] (last-compile-time {:output-to "outer/checkbuild.js"}))))
-
-  (env/with-compiler-env e 
-    (macro-dependants (:macro-files (group-clj-macro-files (clj-files-in-dirs ["src"])))))
-
-  (build* ["src"] {} (env/default-compiler-env))
-  
-  
-  (build ["resources/src"])
-  )
-
-(def options { :output-to "outer/checkbuild.js"
-               :output-dir "outer/out"
-               :optimizations :none
-               :source-map true
-               :warnings true
-               #_:output-wrapper #_false ;; I don't know what this is
-              })
-
-(defn build* [src-dirs opts e]
-  (cljsc/build (SourcePaths. src-dirs) opts e))
-
-(defn build [src-dirs]
-  (build* src-dirs options e))
 
 (comment this is the env structure
          {

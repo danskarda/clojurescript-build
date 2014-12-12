@@ -9,6 +9,8 @@
                  #_[sablono "0.2.22"]]
 
   :source-paths ["src"]
+
+  :test-paths ["test" "resources/src"]
   
   :repl-options {
                  :init-ns builder.core
