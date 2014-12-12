@@ -18,7 +18,7 @@
 ;; tried to move the stuff that needs another look to the top of the file
 
 ;; from cljsbuild
-(defrecord SourcePaths [paths]
+(defrecord CompilableSourcePaths [paths]
   cljs.closure/Compilable
   (-compile [_ opts]
     (mapcat #(cl/-compile % opts) paths)))
@@ -160,7 +160,7 @@
               clj-files
               changed-clj-files))))
 
-(defn build-multiple-root
+(defn build-source-paths
   "Builds ClojureScript source directories incrementally. It is
    sensitive to changes in .clj in your .cljs source directories files.
 
@@ -177,20 +177,24 @@
    The only difference from build is that build-multiple-root takes a list of
    source directories as its first argument."
   ([src-dirs opts]
-     (build-multiple-root src-dirs opts
-                     (if-not (nil? env/*compiler*)
-                       env/*compiler*
-                       (env/default-compiler-env opts))))
+     (build-source-paths src-dirs opts
+                         (if-not (nil? env/*compiler*)
+                           env/*compiler*
+                           (env/default-compiler-env opts))))
   ([src-dirs opts compiler-env]
+     ;; TODO should probably ensure that src-dirs is a list of
+     ;; directories as this is the expectation
+     ;; or only do clj dependancy checking for directories
      (env/with-compiler-env compiler-env
        (let [started-at          (System/currentTimeMillis)
-             changed-macro-files (macro-files-to-reload src-dirs (last-compile-time opts))]
+             changed-macro-files (macro-files-to-reload src-dirs ;; can filter here for directories that allows us to accept compilables
+                                                        (last-compile-time opts))]
          (when (not-empty changed-macro-files)
            (doseq [macro-file changed-macro-files]
              (reload-lib macro-file))
            (mark-known-dependants-for-recompile! changed-macro-files))
 
-         (cljsc/build (SourcePaths. src-dirs) opts compiler-env)
+         (cljsc/build (CompilableSourcePaths. src-dirs) opts compiler-env)
          (touch-or-create-file (compiled-at-marker opts) started-at)))))
 
 (defn js-files-that-can-change-build [opts]
@@ -213,6 +217,8 @@
     (concat cljs-files clj-files js-files)))
 
 
+
+;; TODO test include :true macros
 
 
 
