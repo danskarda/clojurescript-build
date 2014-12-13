@@ -1,10 +1,10 @@
 # ClojureScript Build
 
-This is just getting started but it hopes to be a fast ClojureScript
-build lib for ClojureScript with an emphasis on incremental builds.
+This is just getting started but it hopes to be a fast build lib for
+ClojureScript with an emphasis on incremental builds.
 
 Its main contribution is an awareness of how changed Clojure files in
-cljs source paths affect the build.
+cljs source paths affect a cljs build.
 
 This is not going to be a watching lib. It is going to provide a
 similar interface to `cljs.closure/build`. But it is going to be a

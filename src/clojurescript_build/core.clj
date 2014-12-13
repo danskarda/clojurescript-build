@@ -2,13 +2,9 @@
   (:require
    [clojure.pprint :as p]
    [cljs.env :as env]
-   [cljs.util :as util]
-   [cljs.closure :as cl]
-   [cljs.analyzer :as ana]
-   [cljs.compiler]
-   [cljs.closure :as cljsc]
-   [clojure.set :refer [intersection]]
-   [clojure.java.io :refer [file] :as io]))
+   [cljs.closure]
+   [clojure.java.io :refer [file] :as io]
+   [clojurescript-build.api :as api]))
 
 ;; TODO test :include-macros true macros
 
@@ -17,13 +13,11 @@
   (p/pprint x)
   x)
 
-;; tried to move the stuff that needs another look to the top of the file
-
 ;; from cljsbuild
 (defrecord CompilableSourcePaths [paths]
   cljs.closure/Compilable
   (-compile [_ opts]
-    (mapcat #(cl/-compile % opts) paths)))
+    (mapcat #(cljs.closure/-compile % opts) paths)))
 
 ;; from cljsbuild
 (defn drop-extension [path]
@@ -56,10 +50,6 @@
     (catch java.lang.RuntimeException e
       nil)))
 
-(defn cljs-target-file-from-ns [opts ns]
-  (util/to-target-file (cljs.closure/output-directory opts)
-                       {:ns ns}))
-
 ;; how fast is file-seq?
 (defn files-like* [ends-with dir]
   (map (fn [f] {:source-dir (file dir)
@@ -82,27 +72,6 @@
 (defn annotate-macro-file [f]
   (assoc f :macro-file? (macro-file? f)))
 
-;; POTENTIAL API call
-(defn macro-dependants-for-namespaces
-  "Given a list of clj macro namespace symbols return set of dependant cljs ns symbols."
-  [namespaces]
-  (map :name
-       (let [namespaces-set (set namespaces)]
-         (filter (fn [x] (not-empty (intersection namespaces-set (-> x :require-macros vals set))))
-                 (vals (:cljs.analyzer/namespaces @env/*compiler*))))))
-
-;; POTENTIAL API call
-;; we can reshape the result and augment it with a :name key
-;; to standardize the api
-(defn compile-data-for-ns
-  "Given a namspace symbol return a map of compile data for that namespace."
-  [ns-sym]
-  (second
-   (first
-    (filter (fn [[k v]]
-              (contains? (set (:provides v)) (cljs.compiler/munge (name ns-sym))))
-            (:cljs.closure/compiled-cljs @env/*compiler*)))))
-
 ;; this is only for clj files
 ;; this needs to be fixed 
 (defn get-clj-ns [x] (-> x :source-file ns-from-file))
@@ -113,24 +82,11 @@
 ;; this gets cljs dependant ns for macro files
 (defn macro-dependants [macro-file-resources]
   (let [namespaces (get-clj-namespaces macro-file-resources)]
-    (macro-dependants-for-namespaces namespaces)))
-
-(defn cljs-source-file-from-ns [ns-sym]
-  ;; should probably use ISourceMap for this
-  (file (:source-url (compile-data-for-ns ns-sym))))
-
-(defn touch-source-file-for-ns! [ns-sym]
-  (let [s (cljs-source-file-from-ns ns-sym)]
-    (.setLastModified s (System/currentTimeMillis))))
-
-(defn touch-target-file-for-ns! [opts ns-sym]
-  (let [s (cljs-target-file-from-ns opts ns-sym)]
-    (when (.exists s)
-      (.setLastModified s 5000))))
+    (api/macro-dependants-for-namespaces namespaces)))
 
 (defn mark-known-dependants-for-recompile! [opts file-resources]
   (doseq [ns-sym (macro-dependants file-resources)]
-    (touch-target-file-for-ns! opts ns-sym)))
+    (api/mark-ns-for-recompile! (:output-dir opts) ns-sym)))
 
 ;; tracking compile times
 (defn compiled-at-marker [opts]
@@ -198,8 +154,35 @@
      (env/with-compiler-env compiler-env
        (let [started-at          (System/currentTimeMillis)]
          (handle-source-reloading src-dirs opts)
-         (cljsc/build (CompilableSourcePaths. src-dirs) opts compiler-env)
+         (cljs.closure/build (CompilableSourcePaths. src-dirs) opts compiler-env)
          (touch-or-create-file (compiled-at-marker opts) started-at)))))
+
+(comment
+  (def options { :output-to "outer/checkbuild.js"
+                 :output-dir "outer/out"
+                 :optimizations :none
+                 :source-map true
+                 :warnings true })
+  (def e (env/default-compiler-env options))
+
+  (defn t [f]
+    (.setLastModified (io/file f) (System/currentTimeMillis)))
+
+  ;; forces onery, helper and core to compile
+  (t "test/src/checkbuild/macros.clj") 
+
+  ;; forces only helper to compile
+  (t "test/src/checkbuild/macros_again.clj")
+  
+  ;; forces onery, helper and core to compile
+  (t "test/src/checkbuild/mhelp.clj")
+
+  ;; no_macros should not be recompiled
+
+  (build-source-paths ["test/src"] options e)
+
+  
+  )
 
 (defn js-files-that-can-change-build [opts]
   (->> (or (:libs opts) [])

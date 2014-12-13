@@ -13,5 +13,5 @@
   :test-paths ["test" "test/src"]
   
   :repl-options {
-                 :init-ns clojrescript-build.core
+                 :init-ns clojurescript-build.core
                  })

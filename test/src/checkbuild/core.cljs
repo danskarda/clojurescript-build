@@ -1,7 +1,8 @@
 (ns checkbuild.core
   (:require
    [checkbuild.onery]
-   [checkbuild.helper :as helper])
+   [checkbuild.helper :as helper]
+   [checkbuild.no-macros])
   (:require-macros
      [checkbuild.macros :as mac]))
 

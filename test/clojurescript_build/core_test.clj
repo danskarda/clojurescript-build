@@ -1,6 +1,7 @@
 (ns clojurescript-build.core-test
   (:require
    [clojurescript-build.core :as b]
+   [clojurescript-build.api :as api]   
    [cljs.env :as env]
    [cljs.closure :as cljsc]
    [clojure.java.io :as io]
@@ -110,9 +111,9 @@
   (env/with-compiler-env e
     ;; only one file uses 
     (is (= ['checkbuild.helper]
-           (b/macro-dependants-for-namespaces ['checkbuild.macros-again])))
+           (api/macro-dependants-for-namespaces ['checkbuild.macros-again])))
     (is (= #{'checkbuild.onery 'checkbuild.helper 'checkbuild.core}
-           (set (b/macro-dependants-for-namespaces ['checkbuild.macros]))))
+           (set (api/macro-dependants-for-namespaces ['checkbuild.macros]))))
     (is (= []
            (b/macro-dependants [(get-file "mhelp.clj")])))
     (is (= ['checkbuild.helper]
@@ -124,65 +125,24 @@
   
   (env/with-compiler-env e
     (is (= (.getPath
-            (b/cljs-target-file-from-ns
-             options
+            (api/cljs-target-file-from-ns
+             (:output-dir options)
              'checkbuild.core))
            "outer/out/checkbuild/core.js"))
 
-    (is (.endsWith
-         (.getPath
-          (b/cljs-source-file-from-ns
-           'checkbuild.core))
-         "test/src/checkbuild/core.cljs"))
-
-    (let [tfile (b/cljs-target-file-from-ns options 'checkbuild.core)]
+    (let [tfile (api/cljs-target-file-from-ns
+                 (:output-dir options)
+                 'checkbuild.core)]
       (.setLastModified tfile 58000)
       (Thread/sleep 10)
       (is (= 58000
              (.lastModified tfile)))
-      (b/touch-target-file-for-ns! options 'checkbuild.core)
+      (api/touch-target-file-for-ns!
+       (:output-dir options)
+       'checkbuild.core)
       (Thread/sleep 10)
       (is (= 5000
-             (.lastModified tfile)))
-
-      
-      )
-    
-    
-    ))
-
-
+             (.lastModified tfile))))))
 
 (clojure.test/run-tests)
-
-;; we should clean up output files
-;; 
-
-(comment
-
-  (js-files-that-can-change-build (assoc options :libs ["outer/out"]))
-  
-
-  (env/with-compiler-env e
-    (b/macro-dependants-for-namespaces ['checkbuild.macros-again]))
-
-  (env/with-compiler-env e
-    (macro-dependants-for-namespaces ['checkbuild.macros]))
-  
-  (env/with-compiler-env e
-    (macro-dependants
-     (macro-files-to-reload ["src"] (last-compile-time {:output-to "outer/checkbuild.js"}))))
-
-  (env/with-compiler-env e 
-    (macro-dependants (:macro-files (group-clj-macro-files (clj-files-in-dirs ["src"])))))
-
-  (build* ["src"] {} (env/default-compiler-env))
-  
-  
-  (build ["resources/src"])
-
-
-  )
-
-
 
