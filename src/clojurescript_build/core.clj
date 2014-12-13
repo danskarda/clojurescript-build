@@ -129,15 +129,16 @@
    .cljs files that are dependent on changed .clj files will be marked
    for recompilation.
  
-   This build function provides a very fast compile time if you are modifying .clj
+   This function provides a very fast compile time if you are modifying .clj
    files.
 
-   This build is wrapper around cljs.closure/build and as such it
+   build-source-paths is wrapper around cljs.closure/build and as such it
    takes all the options that cljsc/build takes. It does not alter any
    of the options you are sending to build.
 
-   The only difference from build is that build-multiple-root takes a list of
-   source directories as its first argument."
+   The only signature difference from cljs.closure/build is that
+   build-source-paths takes a list of source directories as its first
+   argument."
   ([src-dirs opts]
      (build-source-paths src-dirs opts
                          (if-not (nil? env/*compiler*)
