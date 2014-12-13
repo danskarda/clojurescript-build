@@ -6,12 +6,8 @@
    [clojure.java.io :refer [file] :as io]
    [clojurescript-build.api :as api]))
 
-;; TODO test :include-macros true macros
-
-;; debug
-(defn l [x]
-  (p/pprint x)
-  x)
+;; debug helper
+(defn l [x] (p/pprint x) x)
 
 ;; from cljsbuild
 (defrecord CompilableSourcePaths [paths]
@@ -55,8 +51,8 @@
   (map (fn [f] {:source-dir (file dir)
                :source-file f })
        (filter #(let [name (.getName ^java.io.File %)]
-             (and (.endsWith name ends-with)
-                  (not= \. (first name))))
+                  (and (.endsWith name ends-with)
+                       (not= \. (first name))))
                (file-seq (file dir)))))
 
 (defn files-like [ends-with dirs]
@@ -65,8 +61,8 @@
 (defn clj-files-in-dirs [dirs]
   (files-like ".clj" dirs))
 
+; Super innacurate but the cost of being wrong here is practically none
 (defn macro-file?
-  "Super innacurate but the cost of being wrong here is minimal."
   [f] (.contains (slurp (:source-file f)) "(defmacro"))
 
 (defn annotate-macro-file [f]
@@ -91,7 +87,7 @@
 ;; tracking compile times
 (defn compiled-at-marker [opts]
   ;; there is an oportunity here to make this a unique marker
-  (file (cljs.closure/output-directory opts) ".cljs-last-compiled-at"))
+  (file (api/output-directory opts) ".cljs-last-compiled-at"))
 
 (defn last-compile-time [opts]
   (.lastModified (compiled-at-marker opts)))
@@ -161,8 +157,9 @@
   (def options { :output-to "outer/checkbuild.js"
                  :output-dir "outer/out"
                  :optimizations :none
-                 :source-map true
-                 :warnings true })
+                 ;; :source-map true
+                :warnings true })
+  
   (def e (env/default-compiler-env options))
 
   (defn t [f]
@@ -188,7 +185,7 @@
   (->> (or (:libs opts) [])
        (files-like ".js")
        (remove #(.startsWith (.getPath (:source-file %))
-                             (cljs.closure/output-directory opts)))
+                             (api/output-directory opts)))
        (remove #(and
                  (:output-to opts)
                  (.endsWith (.getPath (:source-file %))

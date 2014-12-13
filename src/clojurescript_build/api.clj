@@ -1,14 +1,34 @@
 (ns clojurescript-build.api
   (:require
-   [cljs.util :as util]
    [cljs.analyzer]
    [cljs.env :as env]
    [cljs.closure]
+   [clojure.string :as string]
+   [clojure.java.io :as io]   
    [clojure.set :refer [intersection]]))
 
+;; The use of the the term api here is to indicate potential a
+;; potential stabe api for clojurescript compiler consumers
+
+;; cljs.clojure/output-directory
+(defn output-directory [opts]
+  (or (:output-dir opts) "out"))
+
+;; it would be great to have this be stable in the compiler
+#_(defn cljs-target-file-from-ns [output-dir ns-sym]
+    (util/to-target-file (output-directory { :output-dir output-dir })
+                         {:ns ns-sym }))
+
+;; this is independant of compiler changes
 (defn cljs-target-file-from-ns [output-dir ns-sym]
-  (util/to-target-file (cljs.closure/output-directory { :output-dir output-dir })
-                       {:ns ns-sym }))
+  (let [relative-path (string/split
+                       (clojure.lang.Compiler/munge (str ns-sym))
+                       #"\.")
+        parents       (butlast relative-path)
+        path          (apply str (interpose java.io.File/separator
+                                            (cons output-dir parents)))]
+    (io/file (io/file path) 
+             (str (last relative-path) ".js"))))
 
 (defn touch-target-file-for-ns!
   "Backdates a cljs target file so that it the cljs compiler will recompile it."
