@@ -6,6 +6,8 @@
    [clojure.java.io :as io]
    [clojure.test :refer [testing is deftest]]))
 
+(defn l [x] (print x) x)
+
 (def options { :output-to "outer/checkbuild.js"
                :output-dir "outer/out"
                :optimizations :none
@@ -16,15 +18,15 @@
 
 (def test-time (System/currentTimeMillis))
 
-(def clj-files (b/clj-files-in-dirs ["resources/src"]))
+(def clj-files (b/clj-files-in-dirs ["test/src"]))
 
 (def clj-files-name-set
-  #{"resources/src/checkbuild/macros.clj"
-    "resources/src/checkbuild/macros_again.clj"
-    "resources/src/checkbuild/mhelp.clj"})
+  #{"test/src/checkbuild/macros.clj"
+    "test/src/checkbuild/macros_again.clj"
+    "test/src/checkbuild/mhelp.clj"})
 
 (defn get-file [nm]
-  (first (b/files-like nm [ "resources/src"])))
+  (first (b/files-like nm [ "test/src"])))
 
 (defn touch [path t]
   (.setLastModified (io/file path) (+ test-time 1000)))
@@ -33,12 +35,12 @@
   (set (map #(.getPath (:source-file %))
             file-resources)))
 
-(defonce build-once (b/build-multiple-root ["resources/src"] options e))
+(defonce build-once (b/build-source-paths ["test/src"] options e))
 
 (deftest clj-files-in-dirs-test
-  (let [frs  (b/clj-files-in-dirs ["resources/src"])]
+  (let [frs  (b/clj-files-in-dirs ["test/src"])]
     (is (= (set (map #(.getPath (:source-dir %)) frs))
-           #{"resources/src"}))
+           #{"test/src"}))
     (is (= (source-file-set frs)
            clj-files-name-set))))
 
@@ -59,51 +61,50 @@
 ;; very very side effecty
 ;; I should overide get-changed-files here
 
-(deftest group-clj-macro-files-test
-  (let [grp (b/group-clj-macro-files clj-files)
-        macs    (:macro-files grp)
-        non-macs (:non-macro-files grp)]
-    (is (= (source-file-set macs)
-           #{"resources/src/checkbuild/macros.clj"
-             "resources/src/checkbuild/macros_again.clj"}))
-    (is (= (source-file-set non-macs)
-           #{"resources/src/checkbuild/mhelp.clj"}))))
+(deftest handle-source-reloading-test []
+  (env/with-compiler-env e
+    (mapv #(b/touch-or-create-file (:source-file %) test-time) clj-files)
+
+    (is (= #{"test/src/checkbuild/macros.clj"
+             "test/src/checkbuild/macros_again.clj"}
+           (source-file-set (b/handle-source-reloading* ["test/src"]
+                                                        options
+                                                        (- test-time 1000)))))
+
+    (is (empty? 
+         (b/handle-source-reloading* ["resources/src"]
+                                     options
+                                     (+ test-time 1000))))
+    
+    (touch "test/src/checkbuild/mhelp.clj" (+ test-time 1000))
+
+    (is (= #{"test/src/checkbuild/macros.clj"
+             "test/src/checkbuild/macros_again.clj"}
+           (source-file-set (b/handle-source-reloading* ["test/src"]
+                                                        options
+                                                        test-time))))
 
 
-(deftest macro-files-to-reload-test
-  (mapv #(b/touch-or-create-file (:source-file %) test-time) clj-files)
-  (is (= #{"resources/src/checkbuild/macros.clj"
-           "resources/src/checkbuild/macros_again.clj"}
-       (source-file-set (b/macro-files-to-reload ["resources/src"]
-                                                 (- test-time 1000)))))
-  (is (empty? 
-       (b/macro-files-to-reload ["resources/src"]
-                                (+ test-time 1000))))
-  
-  (touch "resources/src/checkbuild/mhelp.clj" (+ test-time 1000))
-  
-  (is (= #{"resources/src/checkbuild/macros.clj"
-           "resources/src/checkbuild/macros_again.clj"}
-       (source-file-set (b/macro-files-to-reload ["resources/src"]
-                                                 test-time))))
+    (mapv #(b/touch-or-create-file (:source-file %) test-time) clj-files)
+    
+    (.setLastModified (io/file "test/src/checkbuild/macros.clj")
+                      (+ test-time 1000))
+    
+    (is (= #{"test/src/checkbuild/macros.clj"}
+           (source-file-set (b/handle-source-reloading* ["test/src"]
+                                                        options
+                                                        test-time))))
 
-  (mapv #(b/touch-or-create-file (:source-file %) test-time) clj-files)
-  
-  (.setLastModified (io/file "resources/src/checkbuild/macros.clj")
-                    (+ test-time 1000))
+    (mapv #(b/touch-or-create-file (:source-file %) test-time) clj-files)
+    
+    (.setLastModified (io/file "test/src/checkbuild/macros_again.clj") (+ test-time 1000))
+    
+    (is (= #{"test/src/checkbuild/macros_again.clj"}
+           (source-file-set (b/handle-source-reloading* ["test/src"]
+                                                        options
+                                                     test-time))))
+    (mapv #(b/touch-or-create-file (:source-file %) test-time) clj-files)))
 
-  (is (= #{"resources/src/checkbuild/macros.clj"}
-       (source-file-set (b/macro-files-to-reload ["resources/src"]
-                                                 test-time))))
-
-  (mapv #(b/touch-or-create-file (:source-file %) test-time) clj-files)
-  
-  (.setLastModified (io/file "resources/src/checkbuild/macros_again.clj") (+ test-time 1000))
-
-  (is (= #{"resources/src/checkbuild/macros_again.clj"}
-         (source-file-set (b/macro-files-to-reload ["resources/src"]
-                                                   test-time))))
-  (mapv #(b/touch-or-create-file (:source-file %) test-time) clj-files))
 
 (deftest test-macro-dependants
   (env/with-compiler-env e
@@ -118,6 +119,37 @@
            (b/macro-dependants [(get-file "macros_again.clj")])))    
     (is (= #{'checkbuild.onery 'checkbuild.helper 'checkbuild.core}
            (set (b/macro-dependants [(get-file "macros.clj")]))))))
+
+(deftest test-get-target-file []
+  
+  (env/with-compiler-env e
+    (is (= (.getPath
+            (b/cljs-target-file-from-ns
+             options
+             'checkbuild.core))
+           "outer/out/checkbuild/core.js"))
+
+    (is (.endsWith
+         (.getPath
+          (b/cljs-source-file-from-ns
+           'checkbuild.core))
+         "test/src/checkbuild/core.cljs"))
+
+    (let [tfile (b/cljs-target-file-from-ns options 'checkbuild.core)]
+      (.setLastModified tfile 58000)
+      (Thread/sleep 10)
+      (is (= 58000
+             (.lastModified tfile)))
+      (b/touch-target-file-for-ns! options 'checkbuild.core)
+      (Thread/sleep 10)
+      (is (= 5000
+             (.lastModified tfile)))
+
+      
+      )
+    
+    
+    ))
 
 
 

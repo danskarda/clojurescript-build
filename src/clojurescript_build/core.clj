@@ -10,6 +10,9 @@
    [clojure.set :refer [intersection]]
    [clojure.java.io :refer [file] :as io]))
 
+
+;; TODO test :include-macros true macros
+
 ;; debug
 (defn l [x]
   (p/pprint x)
@@ -38,7 +41,6 @@
       (subs path (count parent))
       path)))
 
-
 (defn reload-lib [file-resource]
   ;; XXX try catch needed here
   (load (drop-extension (relativize file-resource))))
@@ -55,9 +57,9 @@
     (catch java.lang.RuntimeException e
       nil)))
 
-#_(defn cljs-target-file [opts cljs-file]
+(defn cljs-target-file-from-ns [opts ns]
   (util/to-target-file (cljs.closure/output-directory opts)
-                       (ana/parse-ns cljs-file)))
+                       {:ns ns}))
 
 ;; how fast is file-seq?
 (defn files-like* [ends-with dir]
@@ -114,17 +116,22 @@
   (let [namespaces (get-clj-namespaces macro-file-resources)]
     (macro-dependants-for-namespaces namespaces)))
 
-(defn get-source-file-from-ns [ns-sym]
+(defn cljs-source-file-from-ns [ns-sym]
   ;; should probably use ISourceMap for this
   (file (:source-url (compile-data-for-ns ns-sym))))
 
 (defn touch-source-file-for-ns! [ns-sym]
-  (let [s (get-source-file-from-ns ns-sym)]
+  (let [s (cljs-source-file-from-ns ns-sym)]
     (.setLastModified s (System/currentTimeMillis))))
 
-(defn mark-known-dependants-for-recompile! [file-resources]
+(defn touch-target-file-for-ns! [opts ns-sym]
+  (let [s (cljs-target-file-from-ns opts ns-sym)]
+    (when (.exists s)
+      (.setLastModified s 5000))))
+
+(defn mark-known-dependants-for-recompile! [opts file-resources]
   (doseq [ns-sym (macro-dependants file-resources)]
-    (touch-source-file-for-ns! ns-sym)))
+    (touch-target-file-for-ns! opts ns-sym)))
 
 ;; tracking compile times
 (defn compiled-at-marker [opts]
@@ -144,21 +151,25 @@
   (filter (fn [x] (> (.lastModified (:source-file x)) since-time))
           file-resources))
 
-(defn group-clj-macro-files [file-resources]
-  (let [clj-file-map (group-by :macro-file?
-                               (map annotate-macro-file file-resources))]
-    {:macro-files     (clj-file-map true)
-     :non-macro-files (clj-file-map false) }))
-
-(defn macro-files-to-reload [src-dirs since-time]
-  ;; if a clj file has changed
-  ;; return all macro files
-  (let [clj-files          (map annotate-macro-file (clj-files-in-dirs src-dirs))
-        changed-clj-files  (get-changed-files clj-files since-time)]
+(defn relevant-macro-files [clj-files changed-clj-files]
+  (let [non-macro-clj? (first (filter #(not (:macro-file? %)) changed-clj-files))]
     (filter :macro-file?
-            (if (first (filter #(not (:macro-file? %)) changed-clj-files))
-              clj-files
-              changed-clj-files))))
+            (if non-macro-clj? clj-files changed-clj-files))))
+
+(defn handle-source-reloading*
+  [src-dirs opts last-compile-time']
+  (let [clj-files          (map annotate-macro-file (clj-files-in-dirs src-dirs))
+        changed-clj-files  (get-changed-files clj-files last-compile-time')]
+    (when (not-empty changed-clj-files)
+      ;; reload all changed files
+      (doseq [clj-file changed-clj-files] (reload-lib clj-file))
+      ;; mark affected cljs files for recompile
+      (let [rel-files (relevant-macro-files clj-files changed-clj-files)]
+        (mark-known-dependants-for-recompile! opts rel-files)
+        rel-files))))
+
+(defn handle-source-reloading [src-dirs opts]
+   (handle-source-reloading* src-dirs opts (last-compile-time opts)))
 
 (defn build-source-paths
   "Builds ClojureScript source directories incrementally. It is
@@ -186,14 +197,8 @@
      ;; directories as this is the expectation
      ;; or only do clj dependancy checking for directories
      (env/with-compiler-env compiler-env
-       (let [started-at          (System/currentTimeMillis)
-             changed-macro-files (macro-files-to-reload src-dirs ;; can filter here for directories that allows us to accept compilables
-                                                        (last-compile-time opts))]
-         (when (not-empty changed-macro-files)
-           (doseq [macro-file changed-macro-files]
-             (reload-lib macro-file))
-           (mark-known-dependants-for-recompile! changed-macro-files))
-
+       (let [started-at          (System/currentTimeMillis)]
+         (handle-source-reloading src-dirs opts)
          (cljsc/build (CompilableSourcePaths. src-dirs) opts compiler-env)
          (touch-or-create-file (compiled-at-marker opts) started-at)))))
 
@@ -215,48 +220,3 @@
                      (js-files-that-can-change-build opts)
                      [])]
     (concat cljs-files clj-files js-files)))
-
-
-
-;; TODO test include :true macros
-
-
-
-;; from here down is only for dev
-
-
-
-(comment this is the env structure
-         {
-          :cljs.analyzer/namespaces
-
-          { 'checkbuild.core
-           {:imports nil,
-            :require-macros nil,
-            :use-macros nil,
-            :requires {fw figwheel.client,
-                       figwheel.client figwheel.client,
-                       om.core om.core,
-                       sablono.core sablono.core},
-            :uses nil,
-            :excludes #{},
-            :doc nil,
-            :name checkbuild.core}
-           }
-
-          :cljs.closure/compiled-js
-          { "/Users/brucehauman/workspace/checkbuild/outer/out/figwheel/client.js"
-
-            {:foreign nil,
-             :url URLFile
-             :source-url URLFile
-             :provides ("figwheel.client"),
-             :requires ("goog.Uri" "cljs.core" "cljs.core.async" "figwheel.client.file-reloading" "figwheel.client.heads-up" "figwheel.client.socket"),
-             :lines 1369,
-             :source-map nil}}
-          :cljs.analyzer/analized-cljs 
-          {"file:/Users/brucehauman/.m2/repository/org/clojure/core.async/0.1.346.0-17112a-alpha/core.async-0.1.346.0-17112a-alpha.jar!/cljs/core/async/impl/buffers.cljs" true}
-          
-          }
-
-         )

@@ -1,4 +1,4 @@
-(defproject checkbuild "0.1.0-SNAPSHOT"
+(defproject clojurescript-build "0.1.0-SNAPSHOT"
   :description "FIXME: write this!"
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
@@ -10,8 +10,8 @@
 
   :source-paths ["src"]
 
-  :test-paths ["test" "resources/src"]
+  :test-paths ["test" "test/src"]
   
   :repl-options {
-                 :init-ns builder.core
+                 :init-ns clojrescript-build.core
                  })
