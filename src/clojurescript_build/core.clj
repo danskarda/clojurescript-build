@@ -10,7 +10,6 @@
    [clojure.set :refer [intersection]]
    [clojure.java.io :refer [file] :as io]))
 
-
 ;; TODO test :include-macros true macros
 
 ;; debug
