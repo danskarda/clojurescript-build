@@ -109,13 +109,20 @@
     (filter :macro-file?
             (if non-macro-clj? clj-files changed-clj-files))))
 
+(defn get-files-to-reload [opts changed-clj-files]
+  ;; :reload-non-macro-clj-files defaults to true
+  (if ((fnil identity true) (:reload-non-macro-clj-files opts))
+    changed-clj-files
+    (filter :macro-file? changed-clj-files)))
+
 (defn handle-source-reloading*
   [src-dirs opts last-compile-time']
   (let [clj-files          (map annotate-macro-file (clj-files-in-dirs src-dirs))
-        changed-clj-files  (get-changed-files clj-files last-compile-time')]
+        changed-clj-files  (get-changed-files clj-files last-compile-time')
+        files-to-reload    (get-files-to-reload opts changed-clj-files)]
     (when (not-empty changed-clj-files)
       ;; reload all changed files
-      (doseq [clj-file changed-clj-files] (reload-lib clj-file))
+      (doseq [clj-file files-to-reload] (reload-lib clj-file))
       ;; mark affected cljs files for recompile
       (let [rel-files (relevant-macro-files clj-files changed-clj-files)]
         (mark-known-dependants-for-recompile! opts rel-files)))))
