@@ -81,8 +81,10 @@
     (api/macro-dependants-for-namespaces namespaces)))
 
 (defn mark-known-dependants-for-recompile! [opts file-resources]
-  (doseq [ns-sym (macro-dependants file-resources)]
-    (api/mark-ns-for-recompile! (:output-dir opts) ns-sym)))
+  (let [ns-syms (macro-dependants file-resources)]
+    (doseq [ns-sym ns-syms]
+      (api/mark-ns-for-recompile! (:output-dir opts) ns-sym))
+    ns-syms))
 
 ;; tracking compile times
 (defn compiled-at-marker [opts]
@@ -116,8 +118,7 @@
       (doseq [clj-file changed-clj-files] (reload-lib clj-file))
       ;; mark affected cljs files for recompile
       (let [rel-files (relevant-macro-files clj-files changed-clj-files)]
-        (mark-known-dependants-for-recompile! opts rel-files)
-        rel-files))))
+        (mark-known-dependants-for-recompile! opts rel-files)))))
 
 (defn handle-source-reloading [src-dirs opts]
    (handle-source-reloading* src-dirs opts (last-compile-time opts)))
@@ -138,7 +139,9 @@
 
    The only signature difference from cljs.closure/build is that
    build-source-paths takes a list of source directories as its first
-   argument."
+   argument.
+
+   Returns a list of cljs namespaces affected by clj-file changes."
   ([src-dirs opts]
      (build-source-paths src-dirs opts
                          (if-not (nil? env/*compiler*)
@@ -149,10 +152,12 @@
      ;; directories as this is the expectation
      ;; or only do clj dependancy checking for directories
      (env/with-compiler-env compiler-env
-       (let [started-at          (System/currentTimeMillis)]
-         (handle-source-reloading src-dirs opts)
+       (let [started-at          (System/currentTimeMillis)
+             additional-changed-ns (handle-source-reloading src-dirs opts)]
+         #_(p/pprint additional-changed-ns)
          (cljs.closure/build (CompilableSourcePaths. src-dirs) opts compiler-env)
-         (touch-or-create-file (compiled-at-marker opts) started-at)))))
+         (touch-or-create-file (compiled-at-marker opts) started-at)
+         additional-changed-ns))))
 
 (comment
   (def options { :output-to "outer/checkbuild.js"
