@@ -166,6 +166,27 @@
          (touch-or-create-file (compiled-at-marker opts) started-at)
          additional-changed-ns))))
 
+
+
+(defn js-files-that-can-change-build [opts]
+  (->> (or (:libs opts) [])
+       (files-like ".js")
+       (remove #(.startsWith (.getPath (:source-file %))
+                             (api/output-directory opts)))
+       (remove #(and
+                 (:output-to opts)
+                 (.endsWith (.getPath (:source-file %))
+                            (:output-to opts))))))
+
+(defn files-that-can-change-build [src-dirs opts]
+  ;; only .cljs, .clj, and :libs files can change build
+  (let [cljs-files (files-like ".cljs" src-dirs)
+        clj-files  (files-like ".clj" src-dirs)
+        js-files   (if (:libs opts)
+                     (js-files-that-can-change-build opts)
+                     [])]
+    (concat cljs-files clj-files js-files)))
+
 (comment
   (def options { :output-to "outer/checkbuild.js"
                  :output-dir "outer/out"
@@ -190,25 +211,5 @@
   ;; no_macros should not be recompiled
 
   (build-source-paths ["test/src"] options e)
-
   
   )
-
-(defn js-files-that-can-change-build [opts]
-  (->> (or (:libs opts) [])
-       (files-like ".js")
-       (remove #(.startsWith (.getPath (:source-file %))
-                             (api/output-directory opts)))
-       (remove #(and
-                 (:output-to opts)
-                 (.endsWith (.getPath (:source-file %))
-                            (:output-to opts))))))
-
-(defn files-that-can-change-build [src-dirs opts]
-  ;; only .cljs, .clj, and :libs files can change build
-  (let [cljs-files (files-like ".cljs" src-dirs)
-        clj-files  (files-like ".clj" src-dirs)
-        js-files   (if (:libs opts)
-                     (js-files-that-can-change-build opts)
-                     [])]
-    (concat cljs-files clj-files js-files)))
