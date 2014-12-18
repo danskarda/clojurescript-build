@@ -78,5 +78,15 @@
                             :output-dir "outer/out"
                             :optimizations :none
                             ;; :source-map true
-                            :warnings true })
-)
+                           :warnings true })
+
+  (def compiler (future
+                  (autobuild ["test/src"] { :output-to "outer/checkbuild.js"
+                                           :output-dir "outer/out"
+                                           :optimizations :none
+                                           ;; :source-map true
+                                           :warnings true })))
+  
+  (future-cancel compiler)
+
+  )
