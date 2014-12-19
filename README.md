@@ -56,11 +56,11 @@ To do a single build call:
 ```
 
 The `build-source-paths` call takes a list of directories that hold
-cljs source and a buld optoins map. The build options map is just
+cljs source and a build options map. The build options map is just
 passed on to `cljs.closure/build` and as so it takes all of the
 options that `cljs.closure/build` takes.
 
-To do an auto-build where the files are watched for changes and then
+To do an auto-build where source files are watched for changes and then
 recompiled.
 
 ```clojure
@@ -72,11 +72,6 @@ recompiled.
                   :source-map true
                   :optimizations :none })
 ```                            
-
-
-
-
-
 
 
 ## License
