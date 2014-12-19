@@ -78,14 +78,22 @@ recompiled.
 Here is list of compiler options that can be passed to the
 ClojureScript compiler.
 
-##### `:output-to "resources/public/js/main.js"` 
+#### :output-to 
 
 The path to the JavaScript file that will be output.
 
-##### `:output-dir "resources/public/js/out"`
+```clojure
+:output-to "resources/public/js/main.js"
+```
+
+#### :output-dir
 
 Sets the output directory for temporary files used during
 compilation. Defaults to "out".
+
+```clojure
+:output-dir "resources/public/js/out"
+```
 
 ##### `:optimizations :none`
 
