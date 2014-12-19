@@ -101,7 +101,7 @@ Defaults to `:none`.
 
 ##### `:source-map true`
 
-See (https://github.com/clojure/clojurescript/wiki/Source-maps)[https://github.com/clojure/clojurescript/wiki/Source-maps]
+See https://github.com/clojure/clojurescript/wiki/Source-maps
 
 ##### `:warnings true`
 
