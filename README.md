@@ -183,7 +183,8 @@ Configure externs files for external libraries.
 Defaults to the empty vector `[]`.
 
 For this option, and those below, you can find a very good explanation at:
-   http://lukevanderhart.com/2011/09/30/using-javascript-and-clojurescript.html
+
+http://lukevanderhart.com/2011/09/30/using-javascript-and-clojurescript.html
 
 ```clojure
 :externs ["jquery-externs.js"]
@@ -194,35 +195,39 @@ For this option, and those below, you can find a very good explanation at:
 Adds dependencies on external libraries.  Note that files in these directories will be
 watched and a rebuild will occur if they are modified.
 
-Defaults to the empty vector `[]`.
+Defaults to the empty vector `[]`
 
 ```clojure
 :libs ["closure/library/third_party/closure"]
 ```
 
-#### `:foreign-libs [{:file "http://example.com/remote.js" :provides  ["my.example"]}]`
+#### :foreign-libs
 
 Adds dependencies on foreign libraries. Be sure that the url returns a HTTP Code 200
 
-Defaults to the empty vector `[]`.
+Defaults to the empty vector `[]`
 
 ```clojure
 :foreign-libs [{ :file "http://example.com/remote.js"
                  :provides  ["my.example"]}]
 ```
 
-##### `:preamble ["license.js"]`
+#### :preamble
 
 Prepends the contents of the given files to each output file.
 
-Defaults to the empty vector [].
-          
+Defaults to the empty vector `[]`
+
+```clojure
+:preamble ["license.js"]
+```
+
 #### :language-in and :language-out
 
 Configure the input and output languages for the closure library.
 May be `:ecmascript3`, `ecmascript5`, or `ecmascript5-strict`.
 
-Defaults to ecmascript3.
+Defaults to `:ecmascript3`
 
 ```clojure
 :language-in  :ecmascript3
