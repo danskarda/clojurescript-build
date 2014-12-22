@@ -4,6 +4,7 @@
    [cljs.env :as env]
    [cljs.closure]
    [clojure.java.io :refer [file] :as io]
+   [clojure.stacktrace :as stack]
    [clojurescript-build.api :as api]))
 
 ;; debug helper
@@ -31,8 +32,12 @@
       path)))
 
 (defn reload-lib [file-resource]
-  ;; XXX try catch needed here
-  (load (drop-extension (relativize file-resource))))
+  (try
+    (load (drop-extension (relativize file-resource)))
+    (catch Throwable e
+      (println "Failed to reload clojure file: " (.getCanonicalPath (:source-file file-resource)))
+      (stack/print-cause-trace e 1)
+      (flush))))
 
 ;; should be able to reuse something here with out including tons of deps
 (defn ns-from-file [f]
