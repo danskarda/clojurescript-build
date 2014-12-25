@@ -28,57 +28,76 @@
     (with-precision 2
       (str (/ (double elapsed-us) 1000) " seconds"))))
 
-(defn compile-start [src-dirs build-options]
+(defn compile-start [{:keys [build-options src-dirs]}]
   (println (str reset-color "Compiling \""
                 (:output-to build-options) "\" from " (pr-str src-dirs) "..."))
   (flush))
 
-(defn compile-success [src-dirs build-options started-at]
+(defn compile-success [{:keys [build-options started-at]}]
   (println (green (str "Successfully compiled \""
                        (:output-to build-options) "\" in " (elapsed started-at) ".")))
   (flush))
 
-(defn compile-fail [src-dirs build-options e]
+(defn compile-fail [{:keys [build-options exception]}]
   (println (red (str "Compiling \"" (:output-to build-options) "\" failed.")))
-  (stack/print-cause-trace e 1)
+  (stack/print-cause-trace exception 1)
   (println reset-color)
   (flush))
 
+(defn build-once [{:keys [src-dirs build-options compiler-env] :as state}]
+  (let [started-at (System/currentTimeMillis)]
+    (try
+      (compile-start (assoc state :started-at started-at))
+      (let [build-result (build-source-paths src-dirs build-options)]
+        (compile-success (assoc state
+                                :build-result build-result
+                                :started-at   started-at)))
+      (catch Throwable e
+        (compile-fail (assoc state
+                             :started-at started-at
+                             :exception e))))))
+
+(defn autobuild*
+  [{:keys [src-dirs build-options builder] :as opts}]
+  (let [builder' (or builder build-once)
+        ;; persist compile-env across builds
+        compile-env (or cljs.env/*compiler* (cljs.env/default-compiler-env build-options))]
+     (loop [dependency-mtimes {}]
+       (let [new-mtimes (get-dependency-mtimes src-dirs build-options)]
+         (when (not= new-mtimes dependency-mtimes)
+           (binding [cljs.env/*compiler* compile-env]
+             (builder' (assoc opts
+                              :old-mtimes dependency-mtimes
+                              :new-mtimes new-mtimes))))
+         (Thread/sleep 100)
+         (recur new-mtimes)))))
+
 (defn autobuild
   "Autobuild ClojureScript sources.
-   
    (autobuild [\"test/src\"] { :output-to \"outer/checkbuild.js\"
                                :output-dir \"outer/out\"
                                :optimizations :none
                                ;; :source-map true
-                               :warnings true })"
+                               :warnings true })
+
+  The third arguement is a builder function that has the same
+  signature as the build-once function. This allows you to wrap and do
+  what ever house keeping you need to take care of around the
+  build-source-paths function. For an example builder function see the
+  build-once function above as it is the default bulder function."
   ([src-dirs build-options]
-   (autobuild src-dirs build-options {}))
-  ([src-dirs build-options auto-build-options]
-   (let [auto-options (merge {:on-compile-start   compile-start
-                              :on-compile-success compile-success
-                              :on-compile-fail    compile-fail }
-                             auto-build-options)
-         compiler-env (cljs.env/default-compiler-env build-options)]
-     (loop [dependency-mtimes {}]
-       (let [new-mtimes (get-dependency-mtimes src-dirs build-options)]
-         (when (not= new-mtimes dependency-mtimes)
-           (try
-             (let [started-at (System/currentTimeMillis)]
-               ((:on-compile-start auto-options) src-dirs build-options)
-               (build-source-paths src-dirs build-options compiler-env)
-               ((:on-compile-success auto-options) src-dirs build-options started-at))
-            (catch Throwable e
-              ((:on-compile-fail auto-options) src-dirs build-options e))))
-         (Thread/sleep 100)
-         (recur new-mtimes))))))
+   (autobuild src-dirs build-options build-once))
+  ([src-dirs build-options builder]
+   (autobuild* {:src-dirs      src-dirs
+                :build-options build-options
+                :builder       builder})))
 
 (comment
   (autobuild ["test/src"] { :output-to "outer/checkbuild.js"
                             :output-dir "outer/out"
                             :optimizations :none
                             ;; :source-map true
-                           :warnings true })
+                            :warnings true })
 
   (def compiler (future
                   (autobuild ["test/src"] { :output-to "outer/checkbuild.js"

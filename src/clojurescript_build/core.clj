@@ -155,9 +155,8 @@
 
    Returns a list of cljs namespaces affected by clj-file changes."
   ([src-dirs opts]
-     (build-source-paths src-dirs opts
-                         (if-not (nil? env/*compiler*)
-                           env/*compiler*
+   (build-source-paths src-dirs opts
+                       (or env/*compiler*
                            (env/default-compiler-env opts))))
   ([src-dirs opts compiler-env]
      ;; TODO should probably ensure that src-dirs is a list of
