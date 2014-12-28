@@ -15,7 +15,7 @@
 (def foreground-red "\u001b[31m")
 (def foreground-green "\u001b[32m")
 
-(defn- colorizer [c]
+(defn colorizer [c]
   (fn [& args]
     (str c (apply str args) reset-color)))
 
@@ -23,7 +23,7 @@
 (def green (colorizer foreground-green))
 
 ;; from cljsbuild
-(defn- elapsed [started-at]
+(defn elapsed [started-at]
   (let [elapsed-us (- (System/currentTimeMillis) started-at)]
     (with-precision 2
       (str (/ (double elapsed-us) 1000) " seconds"))))
@@ -58,17 +58,20 @@
                              :exception e))))))
 
 (defn autobuild*
-  [{:keys [src-dirs build-options builder] :as opts}]
+  [{:keys [src-dirs build-options builder each-iteration-hook] :as opts}]
   (let [builder' (or builder build-once)
         ;; persist compile-env across builds
-        compile-env (or cljs.env/*compiler* (cljs.env/default-compiler-env build-options))]
+        compiler-env (or cljs.env/*compiler* (cljs.env/default-compiler-env build-options))]
      (loop [dependency-mtimes {}]
-       (let [new-mtimes (get-dependency-mtimes src-dirs build-options)]
-         (when (not= new-mtimes dependency-mtimes)
-           (binding [cljs.env/*compiler* compile-env]
-             (builder' (assoc opts
+       (let [new-mtimes (get-dependency-mtimes src-dirs build-options)
+             cur-state (assoc opts
+                              :compiler-env compiler-env
                               :old-mtimes dependency-mtimes
-                              :new-mtimes new-mtimes))))
+                              :new-mtimes new-mtimes)]
+         (when (not= new-mtimes dependency-mtimes)
+           (builder' cur-state))
+         (when each-iteration-hook
+           (each-iteration-hook cur-state))
          (Thread/sleep 100)
          (recur new-mtimes)))))
 
