@@ -109,8 +109,9 @@
   :each-iteration-hook
   An optional function which gets executed every iteration of the watch loop.
 
-  :wait-time An integer which is the number of milliseconds the loop
-  pauses between file system checks
+  :wait-time 
+  An integer which is the number of milliseconds the autobuild loop
+  pauses between iterations.
 
   Returns the options map that was provided with the addition of
   a :break-loop-ch key which holds a core.async channel which when
