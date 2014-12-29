@@ -1,11 +1,12 @@
 (ns clojurescript-build.auto
   (:require
    [clojurescript-build.core :refer [build-source-paths files-that-can-change-build]]
+   [clojure.core.async :refer [go-loop timeout chan alts! close!]]
    [clojure.stacktrace :as stack]))
 
 ;; from cljsbuild
-(defn get-dependency-mtimes [src-dirs build-options]
-  (let [files (files-that-can-change-build src-dirs build-options)]
+(defn get-dependency-mtimes [source-paths build-options]
+  (let [files (files-that-can-change-build source-paths build-options)]
     (into {}
           (map (juxt (fn [f] (.getCanonicalPath f))
                (fn [f] (.lastModified f)))
@@ -28,9 +29,9 @@
     (with-precision 2
       (str (/ (double elapsed-us) 1000) " seconds"))))
 
-(defn compile-start [{:keys [build-options src-dirs]}]
+(defn compile-start [{:keys [build-options source-paths]}]
   (println (str reset-color "Compiling \""
-                (:output-to build-options) "\" from " (pr-str src-dirs) "..."))
+                (:output-to build-options) "\" from " (pr-str source-paths) "..."))
   (flush))
 
 (defn compile-success [{:keys [build-options started-at]}]
@@ -44,11 +45,11 @@
   (println reset-color)
   (flush))
 
-(defn build-once [{:keys [src-dirs build-options compiler-env] :as state}]
+(defn build-once [{:keys [source-paths build-options compiler-env] :as state}]
   (let [started-at (System/currentTimeMillis)]
     (try
       (compile-start (assoc state :started-at started-at))
-      (let [build-result (build-source-paths src-dirs build-options)]
+      (let [build-result (build-source-paths source-paths build-options compiler-env)]
         (compile-success (assoc state
                                 :build-result build-result
                                 :started-at   started-at)))
@@ -57,23 +58,91 @@
                              :started-at started-at
                              :exception e))))))
 
+(defn make-conditional-builder [builder]
+  (fn [{:keys [source-paths
+              build-options
+              compiler-env
+              dependency-mtimes] :as build}]
+    (let [new-mtimes (get-dependency-mtimes source-paths build-options)]
+      (when (not= new-mtimes dependency-mtimes)
+        (builder (assoc build
+                        :old-mtimes dependency-mtimes
+                        :new-mtimes new-mtimes)))
+      (assoc build :dependency-mtimes new-mtimes))))
+
+(defn prep-build [build]
+  (assoc build
+         ;; add support for cljsbuild :compiler option
+         ;; I think :build-options is a better name
+         :build-options (or (:build-options build)
+                            (:compiler build))
+         :compiler-env (or (:compiler-env build)
+                           (cljs.env/default-compiler-env
+                             (:build-options build)))
+         :dependency-mtimes {}))
+
+(defn stop-autobuild! [{:keys [break-loop-ch] :as autobuild-struct}]
+  (if break-loop-ch
+    (do
+      (close! break-loop-ch)
+      (dissoc autobuild-struct :break-loop-ch))
+    autobuild-struct))
+
 (defn autobuild*
-  [{:keys [src-dirs build-options builder each-iteration-hook] :as opts}]
-  (let [builder' (or builder build-once)
-        ;; persist compile-env across builds
-        compiler-env (or cljs.env/*compiler* (cljs.env/default-compiler-env build-options))]
-     (loop [dependency-mtimes {}]
-       (let [new-mtimes (get-dependency-mtimes src-dirs build-options)
-             cur-state (assoc opts
-                              :compiler-env compiler-env
-                              :old-mtimes dependency-mtimes
-                              :new-mtimes new-mtimes)]
-         (when (not= new-mtimes dependency-mtimes)
-           (builder' cur-state))
-         (when each-iteration-hook
-           (each-iteration-hook cur-state))
-         (Thread/sleep 100)
-         (recur new-mtimes)))))
+  "Autobuild ClojureScript Source files.
+  Takes a map with the following keys:
+
+  :builds 
+  Is a required vector of builds. For example:
+    [{:source-paths [\"src\" \"dev/src\"]
+      :build-options {:output-to \"resources/public/out/example.js\"
+                      :output-dir \"resources/public/out\"
+                      :optimizations :none}}
+     {:source-paths [\"src\"]
+      :build-options {:output-to \"resources/public/out/example.js\"
+                      :optimizations :simple}}]
+
+  :builder 
+  An optional builder which wraps clojurescript-build.core/build-source-paths.
+  See the default builder clojurescript-build.auto/build-once as an example. 
+  
+  :each-iteration-hook
+  An optional function which gets executed every iteration of the watch loop.
+
+  :wait-time An integer which is the number of milliseconds the loop
+  pauses between file system checks
+
+  Returns the options map that was provided with the addition of
+  a :break-loop-ch key which holds a core.async channel which when
+  provided a value will stop the autobuild loop. 
+
+  If you store the result of this call you can call stop-autobuild! on
+  it to terminate the autobuild loop.
+
+  You can then pass this map back to autobuild to restart the watching process.
+
+  Helpful usage pattern:
+
+  (def autobuild-data (atom {:builds 
+                              [{:source-paths [\"src\" \"dev/src\"]
+                                :build-options {:output-to \"out/example.js\"
+                                               :output-dir \"out\"
+                                               :optimizations :none}}]})
+  Start building:
+  (swap! autobuild-data autobuild*)
+
+  Stop building
+  (swap! autobuild-data stop-autobuild!)"
+  [{:keys [builds builder each-iteration-hook wait-time] :as opts}]
+  (let [wait-time          (or wait-time 100)
+        conditional-build! (make-conditional-builder (or builder build-once))
+        break-loop-ch      (chan)]
+    (go-loop [builds (mapv prep-build builds)]
+      (let [[v ch] (alts! [(timeout wait-time) break-loop-ch])]
+        (when (not= ch break-loop-ch)
+          (when each-iteration-hook (each-iteration-hook opts))
+          (recur (mapv conditional-build! builds)))))
+    (assoc opts :break-loop-ch break-loop-ch)))
 
 (defn autobuild
   "Autobuild ClojureScript sources.
@@ -88,11 +157,11 @@
   what ever house keeping you need to take care of around the
   build-source-paths function. For an example builder function see the
   build-once function above as it is the default bulder function."
-  ([src-dirs build-options]
-   (autobuild src-dirs build-options build-once))
-  ([src-dirs build-options builder]
-   (autobuild* {:src-dirs      src-dirs
-                :build-options build-options
+  ([source-paths build-options]
+   (autobuild source-paths build-options build-once))
+  ([source-paths build-options builder]
+   (autobuild* {:builds [{:source-paths      source-paths
+                          :build-options build-options}]
                 :builder       builder})))
 
 (comment
@@ -100,15 +169,18 @@
                             :output-dir "outer/out"
                             :optimizations :none
                             ;; :source-map true
-                            :warnings true })
+                           :warnings true })
 
-  (def compiler (future
-                  (autobuild ["test/src"] { :output-to "outer/checkbuild.js"
-                                           :output-dir "outer/out"
-                                           :optimizations :none
-                                           ;; :source-map true
-                                           :warnings true })))
+  (def auto (autobuild* {:builds [{:source-paths ["test/src"]
+                                   :build-options { :output-to "outer/checkbuild.js"
+                                                   :output-dir "outer/out"
+                                                   :optimizations :none
+                                                   ;; :source-map true
+                                                   :warnings true }}
+                                  {:source-paths ["test/src"]
+                                   :build-options {:output-to "outer/checkbuild-simple.js"
+                                                   :optimizations :simple }}]})) 
   
-  (future-cancel compiler)
-
-  )
+  (stop-autobuild! auto)
+  
+)
