@@ -164,6 +164,15 @@
           (recur (mapv conditional-build! builds)))))
     (assoc opts :break-loop-ch break-loop-ch)))
 
+(defn autobuild-blocking*
+  "Same as autobuild but blocks while watching."
+  [{:keys [builds builder each-iteration-hook wait-time] :as opts}]
+  (let [wait-time          (or wait-time 100)
+        conditional-build! (make-conditional-builder (or builder build-once))]
+    (loop [builds (mapv prep-build builds)]
+      (when each-iteration-hook (each-iteration-hook opts))
+      (recur (mapv conditional-build! builds)))))
+
 (defn autobuild
   "Autobuild ClojureScript sources.
    (autobuild [\"test/src\"] { :output-to \"outer/checkbuild.js\"
