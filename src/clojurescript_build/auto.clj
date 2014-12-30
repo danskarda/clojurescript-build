@@ -1,8 +1,9 @@
 (ns clojurescript-build.auto
   (:require
-   [clojurescript-build.core :refer [build-source-paths files-that-can-change-build]]
+   [clojurescript-build.core :refer [build-source-paths* files-that-can-change-build]]
    [clojure.core.async :refer [go-loop timeout chan alts! close!]]
-   [clojure.stacktrace :as stack]))
+   [clojure.stacktrace :as stack]
+   [cljs.analyzer]))
 
 ;; from cljsbuild
 (defn get-dependency-mtimes [source-paths build-options]
@@ -29,34 +30,52 @@
     (with-precision 2
       (str (/ (double elapsed-us) 1000) " seconds"))))
 
-(defn compile-start [{:keys [build-options source-paths]}]
+(defn compile-start [{:keys [build-options source-paths] :as build}]
   (println (str reset-color "Compiling \""
                 (:output-to build-options) "\" from " (pr-str source-paths) "..."))
-  (flush))
+  (flush)
+  build)
 
-(defn compile-success [{:keys [build-options started-at]}]
+(defn compile-success [{:keys [build-options started-at] :as build}]
   (println (green (str "Successfully compiled \""
                        (:output-to build-options) "\" in " (elapsed started-at) ".")))
-  (flush))
+  (flush)
+  build)
 
-(defn compile-fail [{:keys [build-options exception]}]
+(defn compile-fail [{:keys [build-options exception] :as build}]
   (println (red (str "Compiling \"" (:output-to build-options) "\" failed.")))
   (stack/print-cause-trace exception 1)
   (println reset-color)
-  (flush))
+  (flush)
+  build)
 
-(defn build-once [{:keys [source-paths build-options compiler-env] :as state}]
-  (let [started-at (System/currentTimeMillis)]
+(defn time-build [builder]
+  (fn [build]
+    (let [started-at (System/currentTimeMillis)]
+      (builder (assoc build :started-at started-at)))))
+
+(defn before [builder callback]
+  (fn [build]
+    (callback build)
+    (builder build)))
+
+(defn after [builder callback]
+  (fn [build]
+    (callback (builder build))))
+
+(defn error [builder callback]
+  (fn [build]
     (try
-      (compile-start (assoc state :started-at started-at))
-      (let [build-result (build-source-paths source-paths build-options compiler-env)]
-        (compile-success (assoc state
-                                :build-result build-result
-                                :started-at   started-at)))
+      (builder build)
       (catch Throwable e
-        (compile-fail (assoc state
-                             :started-at started-at
-                             :exception e))))))
+        (callback (assoc build :exception e))))))
+
+(def build-once 
+  (-> build-source-paths*
+    time-build
+    (before  compile-start)
+    (after   compile-success)
+    (error   compile-fail)))
 
 (defn make-conditional-builder [builder]
   (fn [{:keys [source-paths
@@ -93,7 +112,7 @@
   Takes a map with the following keys:
 
   :builds 
-  Is a required vector of builds. For example:
+  Is a required vector of builds to watch and build. For example:
     [{:source-paths [\"src\" \"dev/src\"]
       :build-options {:output-to \"resources/public/out/example.js\"
                       :output-dir \"resources/public/out\"
@@ -153,7 +172,7 @@
                                ;; :source-map true
                                :warnings true })
 
-  The third arguement is a builder function that has the same
+  The third parameter is a builder function that has the same
   signature as the build-once function. This allows you to wrap and do
   what ever house keeping you need to take care of around the
   build-source-paths function. For an example builder function see the
@@ -183,5 +202,7 @@
                                                    :optimizations :simple }}]})) 
   
   (stop-autobuild! auto)
+
   
-)
+  )
+
