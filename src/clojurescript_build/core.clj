@@ -31,9 +31,12 @@
       (subs path (count parent))
       path)))
 
+;; should a clj file that is erroring out stop cljs files from
+;; building?
+
 (defn reload-lib [file-resource]
   (try
-    (load (drop-extension (relativize file-resource)))
+    (load (drop-extension (relativize file-resource)))  
     (catch Throwable e
       (println "Failed to reload clojure file: " (.getCanonicalPath (:source-file file-resource)))
       (stack/print-cause-trace e 1)

@@ -61,7 +61,9 @@
 
 (defn after [builder callback]
   (fn [build]
-    (callback (builder build))))
+    (let [res (builder build)]
+      (callback res)
+      res)))
 
 (defn error [builder callback]
   (fn [build]
@@ -69,6 +71,19 @@
       (builder build)
       (catch Throwable e
         (callback (assoc build :exception e))))))
+
+(defn warning-message-handler [callback]
+  (fn [warning-type env extra]
+    (when (warning-type cljs.analyzer/*cljs-warnings*)
+      (when-let [s (cljs.analyzer/error-message warning-type extra)]
+        (callback (cljs.analyzer/message env s))))))
+
+(defn warning [builder warn-handler]
+  (let [warning-handlers (conj cljs.analyzer/*cljs-warning-handlers*
+                               warn-handler)]
+    (fn [build]
+      (binding [cljs.analyzer/*cljs-warning-handlers* warning-handlers]
+        (builder build)))))
 
 (def build-once 
   (-> build-source-paths*
@@ -164,12 +179,13 @@
           (recur (mapv conditional-build! builds)))))
     (assoc opts :break-loop-ch break-loop-ch)))
 
-(defn autobuild-blocking*
+#_(defn autobuild-blocking*
   "Same as autobuild but blocks while watching."
   [{:keys [builds builder each-iteration-hook wait-time] :as opts}]
   (let [wait-time          (or wait-time 100)
         conditional-build! (make-conditional-builder (or builder build-once))]
     (loop [builds (mapv prep-build builds)]
+      (Thread/sleep wait-time)
       (when each-iteration-hook (each-iteration-hook opts))
       (recur (mapv conditional-build! builds)))))
 
@@ -212,6 +228,4 @@
   
   (stop-autobuild! auto)
 
-  
   )
-
