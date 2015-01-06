@@ -87,6 +87,7 @@
 
 (def build-once 
   (-> build-source-paths*
+    #_(warning (warning-message-handler #(println %)))
     time-build
     (before  compile-start)
     (after   compile-success)

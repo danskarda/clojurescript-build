@@ -6,7 +6,6 @@
   (:require-macros
      [checkbuild.macros :as mac]))
 
-
 (defn h []
   (checkbuild.onery/this-is-stupid-really)
   (helper/helper))
@@ -19,3 +18,4 @@
 (println "Edits to this text should show up in your developer console now yeah.")
 
 (print (prn-str (mac/three 3)))
+
