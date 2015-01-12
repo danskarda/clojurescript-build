@@ -106,15 +106,15 @@
       (assoc build :dependency-mtimes new-mtimes))))
 
 (defn prep-build [build]
-  (assoc build
-         ;; add support for cljsbuild :compiler option
-         ;; I think :build-options is a better name
-         :build-options (or (:build-options build)
-                            (:compiler build))
-         :compiler-env (or (:compiler-env build)
-                           (cljs.env/default-compiler-env
-                             (:build-options build)))
-         :dependency-mtimes {}))
+  (let [build-options (or (:build-options build)
+                          (:compiler build))]
+    (assoc build
+           ;; add support for cljsbuild :compiler option
+           ;; I think :build-options is a better name
+           :build-options build-options
+           :compiler-env (or (:compiler-env build)
+                             (cljs.env/default-compiler-env build-options))
+           :dependency-mtimes {})))
 
 (defn stop-autobuild! [{:keys [break-loop-ch] :as autobuild-struct}]
   (if break-loop-ch
