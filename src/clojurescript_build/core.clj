@@ -198,12 +198,10 @@
                      [])]
     (concat cljs-files clj-files js-files)))
 
-(defn clean-build [{:keys [output-to output-dir]}]
+(defn clean-build [{:keys [output-to output-dir] :as build-options}]
   (when (and output-to output-dir)
-    (let [clean-file (fn [s]
-                       (when (.exists s)
-                         (.setLastModified s 5000)))]
-      (mapv clean-file (cons (io/file output-to) (file-seq (io/file output-dir)))))))
+    (let [clean-file (fn [s] (when (.exists s) (.delete s)))]
+      (mapv clean-file (cons (io/file output-to) (reverse (file-seq (io/file output-dir))))))))
 
 (comment
   (def options { :output-to "outer/checkbuild.js"
