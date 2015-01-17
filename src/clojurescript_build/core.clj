@@ -2,7 +2,7 @@
   (:require
    [clojure.pprint :as p]
    [cljs.env :as env]
-   [cljs.util :refer [debug-prn]]
+   ;; [cljs.util :refer [debug-prn]]
    [cljs.closure]
    [clojure.java.io :refer [file] :as io]
    [clojure.stacktrace :as stack]
