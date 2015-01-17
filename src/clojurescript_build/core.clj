@@ -198,12 +198,20 @@
                      [])]
     (concat cljs-files clj-files js-files)))
 
+(defn clean-build [{:keys [output-to output-dir]}]
+  (when (and output-to output-dir)
+    (let [clean-file (fn [s]
+                       (when (.exists s)
+                         (.setLastModified s 5000)))]
+      (mapv clean-file (cons (io/file output-to) (file-seq (io/file output-dir)))))))
+
 (comment
   (def options { :output-to "outer/checkbuild.js"
                  :output-dir "outer/out"
                  :optimizations :none
-                 ;; :source-map true
-                :warnings true })
+                 :cache-analysis true
+                  ;; :source-map true
+                 :warnings true })
   
   (def e (env/default-compiler-env options))
 
@@ -221,6 +229,8 @@
 
   ;; no_macros should not be recompiled
 
-  (build-source-paths ["test/src"] options e)
-  
+  (let [start (System/currentTimeMillis)]
+    (build-source-paths ["test/src"] options e)
+    (- (System/currentTimeMillis) start))
+
   )
