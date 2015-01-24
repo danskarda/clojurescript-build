@@ -224,7 +224,6 @@
   
   ;; forces onery, helper and core to compile
   (t "test/src/checkbuild/mhelp.clj")
-
   ;; no_macros should not be recompiled
 
   (let [start (System/currentTimeMillis)]
