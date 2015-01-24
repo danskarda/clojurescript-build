@@ -1,6 +1,6 @@
 # ClojureScript Build
 
-[![Clojars Project](http://clojars.org/clojurescript-build/latest-version.svg)]
+![Clojars Project](http://clojars.org/clojurescript-build/latest-version.svg)
 
 A library that builds ClojureScript.
 
