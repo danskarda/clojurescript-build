@@ -36,12 +36,7 @@
 ;; building?
 
 (defn reload-lib [file-resource]
-  (try
-    (load (drop-extension (relativize file-resource)))  
-    (catch Throwable e
-      (println "Failed to reload clojure file: " (.getCanonicalPath (:source-file file-resource)))
-      (stack/print-cause-trace e 1)
-      (flush))))
+  (load (drop-extension (relativize file-resource))))
 
 ;; should be able to reuse something here with out including tons of deps
 (defn ns-from-file [f]

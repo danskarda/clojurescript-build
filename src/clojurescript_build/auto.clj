@@ -10,7 +10,7 @@
   (let [files (files-that-can-change-build source-paths build-options)]
     (into {}
           (map (juxt (fn [f] (.getCanonicalPath f))
-               (fn [f] (.lastModified f)))
+                     (fn [f] (.lastModified f)))
                (map :source-file files)))))
 
 (def reset-color "\u001b[0m")
@@ -192,11 +192,11 @@
 
 (defn autobuild
   "Autobuild ClojureScript sources.
-   (autobuild [\"test/src\"] { :output-to \"outer/checkbuild.js\"
-                               :output-dir \"outer/out\"
-                               :optimizations :none
-                               ;; :source-map true
-                               :warnings true })
+  (autobuild [\"test/src\"] { :output-to \"outer/checkbuild.js\"
+                              :output-dir \"outer/out\"
+                              :optimizations :none
+                              ;; :source-map true
+                              :warnings true })
 
   The third parameter is a builder function that has the same
   signature as the build-once function. This allows you to wrap and do
@@ -212,9 +212,9 @@
 
 (comment
   (autobuild ["test/src"] { :output-to "outer/checkbuild.js"
-                            :output-dir "outer/out"
-                            :optimizations :none
-                            ;; :source-map true
+                           :output-dir "outer/out"
+                           :optimizations :none
+                           ;; :source-map true
                            :warnings true })
 
   (def auto (autobuild* {:builds [{:source-paths ["test/src"]
