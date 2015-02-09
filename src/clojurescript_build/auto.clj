@@ -103,7 +103,9 @@
         (builder (assoc build
                         :old-mtimes dependency-mtimes
                         :new-mtimes new-mtimes)))
-      (assoc build :dependency-mtimes new-mtimes))))
+      (assoc build
+             :dependency-mtimes new-mtimes
+             :reload-clj-files true))))
 
 (defn prep-build [build]
   (let [build-options (or (:build-options build)

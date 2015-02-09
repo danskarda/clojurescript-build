@@ -134,13 +134,13 @@
 (defn handle-source-reloading [src-dirs opts]
    (handle-source-reloading* src-dirs opts (last-compile-time opts)))
 
-(defn build-source-paths* [{:keys [source-paths build-options compiler-env] :as build}]
+(defn build-source-paths* [{:keys [source-paths build-options compiler-env reload-clj-files] :as build}]
   ;; TODO should probably ensure that src-dirs is a list of
   ;; directories as this is the expectation
   ;; or only do clj dependancy checking for directories
   (env/with-compiler-env compiler-env
     (let [started-at          (System/currentTimeMillis)
-          additional-changed-ns (handle-source-reloading source-paths build-options)]
+          additional-changed-ns (if reload-clj-files (handle-source-reloading source-paths build-options) [])]
       #_(p/pprint additional-changed-ns)
       (cljs.closure/build (CompilableSourcePaths. source-paths) build-options compiler-env)
       (touch-or-create-file (compiled-at-marker build-options) started-at)
