@@ -103,9 +103,7 @@
         (builder (assoc build
                         :old-mtimes dependency-mtimes
                         :new-mtimes new-mtimes)))
-      (assoc build
-             :dependency-mtimes new-mtimes
-             :reload-clj-files true))))
+      (assoc build :dependency-mtimes new-mtimes))))
 
 (defn prep-build [build]
   (let [build-options (or (:build-options build)
@@ -175,22 +173,16 @@
   (let [wait-time          (or wait-time 100)
         conditional-build! (make-conditional-builder (or builder build-once))
         break-loop-ch      (chan)]
-    (go-loop [builds (mapv prep-build builds)]
+    ;; prevent clj-reload on first pass
+    (go-loop [builds (mapv #(assoc % :reload-clj-files false) 
+                           (mapv prep-build builds))] 
       (let [[v ch] (alts! [(timeout wait-time) break-loop-ch])]
         (when (not= ch break-loop-ch)
           (when each-iteration-hook (each-iteration-hook opts))
-          (recur (mapv conditional-build! builds)))))
+          (recur
+           (mapv #(assoc % :reload-clj-files true)
+                 (mapv conditional-build! builds))))))
     (assoc opts :break-loop-ch break-loop-ch)))
-
-#_(defn autobuild-blocking*
-  "Same as autobuild but blocks while watching."
-  [{:keys [builds builder each-iteration-hook wait-time] :as opts}]
-  (let [wait-time          (or wait-time 100)
-        conditional-build! (make-conditional-builder (or builder build-once))]
-    (loop [builds (mapv prep-build builds)]
-      (Thread/sleep wait-time)
-      (when each-iteration-hook (each-iteration-hook opts))
-      (recur (mapv conditional-build! builds)))))
 
 (defn autobuild
   "Autobuild ClojureScript sources.

@@ -138,13 +138,18 @@
   ;; TODO should probably ensure that src-dirs is a list of
   ;; directories as this is the expectation
   ;; or only do clj dependancy checking for directories
-  (env/with-compiler-env compiler-env
-    (let [started-at          (System/currentTimeMillis)
-          additional-changed-ns (if reload-clj-files (handle-source-reloading source-paths build-options) [])]
-      #_(p/pprint additional-changed-ns)
-      (cljs.closure/build (CompilableSourcePaths. source-paths) build-options compiler-env)
-      (touch-or-create-file (compiled-at-marker build-options) started-at)
-      (assoc build :additional-changed-ns additional-changed-ns))))
+  
+  ;; reload-clj-files defaults to true
+  (let [reload-clj-files (if (nil? reload-clj-files) true reload-clj-files)]
+    (env/with-compiler-env compiler-env
+      (let [started-at          (System/currentTimeMillis)
+            additional-changed-ns (if reload-clj-files
+                                    (handle-source-reloading source-paths build-options)
+                                    [])]
+        #_(p/pprint additional-changed-ns)
+        (cljs.closure/build (CompilableSourcePaths. source-paths) build-options compiler-env)
+        (touch-or-create-file (compiled-at-marker build-options) started-at)
+        (assoc build :additional-changed-ns additional-changed-ns)))))
 
 (defn build-source-paths
   "Builds ClojureScript source directories incrementally. It is
