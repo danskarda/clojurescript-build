@@ -1,4 +1,4 @@
-(defproject clojurescript-build "0.1.4"
+(defproject clojurescript-build "0.1.5"
   :description "A clojurescript build library."
   :url "https://github.com/bhauman/clojurescript-build"
   :license {:name "Eclipse Public License"

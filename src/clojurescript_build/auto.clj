@@ -178,7 +178,9 @@
                            (mapv prep-build builds))] 
       (let [[v ch] (alts! [(timeout wait-time) break-loop-ch])]
         (when (not= ch break-loop-ch)
-          (when each-iteration-hook (each-iteration-hook opts))
+          (when each-iteration-hook
+            (doseq [b builds]
+              (each-iteration-hook opts b)))
           (recur
            (mapv #(assoc % :reload-clj-files true)
                  (mapv conditional-build! builds))))))
