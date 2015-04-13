@@ -52,12 +52,16 @@
 
 ;; how fast is file-seq?
 (defn files-like* [ends-with dir]
-  (map (fn [f] {:source-dir (file dir)
-               :source-file f })
-       (filter #(let [name (.getName ^java.io.File %)]
-                  (and (.endsWith name ends-with)
-                       (not= \. (first name))))
-               (file-seq (file dir)))))
+  (let [suffix? (fn [n sf] (.endsWith n sf))
+        ending? (if (vector? ends-with)
+                  (fn [n] (reduce #(or %1 %2) (map (partial suffix? n) ends-with)))
+                  #(suffix? % ends-with))]
+    (map (fn [f] {:source-dir (file dir)
+                 :source-file f })
+         (filter #(let [name (.getName ^java.io.File %)]
+                    (and (ending? name)
+                     (not= \. (first name))))
+                 (file-seq (file dir))))))
 
 (defn files-like [ends-with dirs]
   (mapcat (partial files-like* ends-with) dirs))
@@ -190,13 +194,12 @@
                             (:output-to opts))))))
 
 (defn files-that-can-change-build [src-dirs opts]
-  ;; only .cljs, .clj, and :libs files can change build
-  (let [cljs-files (files-like ".cljs" src-dirs)
-        clj-files  (files-like ".clj" src-dirs)
+  ;; only .cljs, .cljc, .clj, and :libs files can change build
+  (let [cljs-files (files-like [".cljs" ".cljc"  ".clj"] src-dirs)
         js-files   (if (:libs opts)
                      (js-files-that-can-change-build opts)
                      [])]
-    (concat cljs-files clj-files js-files)))
+    (concat cljs-files js-files)))
 
 (defn clean-build [{:keys [output-to output-dir] :as build-options}]
   (when (and output-to output-dir)
