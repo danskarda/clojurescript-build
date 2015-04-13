@@ -2,6 +2,7 @@
   (:require
    [clojure.pprint :as p]
    [cljs.env :as env]
+   [cljs.analyzer :as ana]
    ;; [cljs.util :refer [debug-prn]]
    [cljs.closure]
    [clojure.java.io :refer [file] :as io]
@@ -9,7 +10,7 @@
    [clojurescript-build.api :as api]))
 
 ;; debug helper
-(defn l [x] (p/pprint x) x)
+(defn l [x] (println (prn-str x)) x)
 
 ;; from cljsbuild
 (defrecord CompilableSourcePaths [paths]
@@ -42,11 +43,10 @@
 (defn ns-from-file [f]
   (try
     (when (.exists f)
-      (with-open [rdr (io/reader f)]
-        (-> (java.io.PushbackReader. rdr)
-            read
-            second)))
-    ;; better exception here eh?
+      (let [file-path (.getAbsolutePath f)]
+        (with-open [rdr (io/reader file-path)]
+          (let [forms (ana/forms-seq* rdr file-path)]
+            (second (first forms))))))
     (catch java.lang.RuntimeException e
       nil)))
 
@@ -133,7 +133,6 @@
       (doseq [clj-file files-to-reload] (reload-lib clj-file))
       ;; mark affected cljs files for recompile
       (let [rel-files (relevant-macro-files clj-files changed-clj-files)]
-        #_(println (prn-str rel-files))
         (mark-known-dependants-for-recompile! opts rel-files)))))
 
 (defn handle-source-reloading [src-dirs opts]
