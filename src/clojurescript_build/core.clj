@@ -67,7 +67,7 @@
   (mapcat (partial files-like* ends-with) dirs))
 
 (defn clj-files-in-dirs [dirs]
-  (files-like ".clj" dirs))
+  (files-like [".clj" ".cljc"] dirs))
 
 ; Super innacurate but the cost of being wrong here is practically none
 (defn macro-file?
@@ -133,6 +133,7 @@
       (doseq [clj-file files-to-reload] (reload-lib clj-file))
       ;; mark affected cljs files for recompile
       (let [rel-files (relevant-macro-files clj-files changed-clj-files)]
+        #_(println (prn-str rel-files))
         (mark-known-dependants-for-recompile! opts rel-files)))))
 
 (defn handle-source-reloading [src-dirs opts]
@@ -150,7 +151,6 @@
             additional-changed-ns (if reload-clj-files
                                     (handle-source-reloading source-paths build-options)
                                     [])]
-        #_(p/pprint additional-changed-ns)
         (cljs.closure/build (CompilableSourcePaths. source-paths) build-options compiler-env)
         (touch-or-create-file (compiled-at-marker build-options) started-at)
         (assoc build :additional-changed-ns additional-changed-ns)))))
