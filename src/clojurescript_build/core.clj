@@ -16,7 +16,13 @@
 (defrecord CompilableSourcePaths [paths]
   cljs.closure/Compilable
   (-compile [_ opts]
-    (mapcat #(cljs.closure/-compile % opts) paths)))
+    (reduce (fn [accum v]
+              (let [o (cljs.closure/-compile v opts)]
+                (if (seq? o)
+                  (concat accum o)
+                  (conj accum o))))
+            []
+            paths)))
 
 ;; from cljsbuild
 (defn drop-extension [path]
@@ -144,11 +150,12 @@
   ;; or only do clj dependancy checking for directories
   
   ;; reload-clj-files defaults to true
-  (let [reload-clj-files (if (nil? reload-clj-files) true reload-clj-files)]
+  (let [reload-clj-files (if (nil? reload-clj-files) true reload-clj-files)
+        source-paths'     (filter string? source-paths)]
     (env/with-compiler-env compiler-env
       (let [started-at          (System/currentTimeMillis)
             additional-changed-ns (if reload-clj-files
-                                    (handle-source-reloading source-paths build-options)
+                                    (handle-source-reloading source-paths' build-options)
                                     [])]
         (cljs.closure/build (CompilableSourcePaths. source-paths) build-options compiler-env)
         (touch-or-create-file (compiled-at-marker build-options) started-at)
