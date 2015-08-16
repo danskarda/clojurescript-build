@@ -189,8 +189,8 @@
                          :build-options opts
                          :compiler-env compiler-env})))
 
-(defn js-files-that-can-change-build [opts]
-  (->> (or (:libs opts) [])
+(defn js-files-that-can-change-build [opts src-dirs]
+  (->> (concat (or (:libs opts) []) src-dirs)
        (files-like ".js")
        (remove #(.startsWith (.getPath (:source-file %))
                              (api/output-directory opts)))
@@ -202,9 +202,7 @@
 (defn files-that-can-change-build [src-dirs opts]
   ;; only .cljs, .cljc, .clj, and :libs files can change build
   (let [cljs-files (files-like [".cljs" ".cljc"  ".clj"] src-dirs)
-        js-files   (if (:libs opts)
-                     (js-files-that-can-change-build opts)
-                     [])]
+        js-files   (js-files-that-can-change-build opts src-dirs)]
     (concat cljs-files js-files)))
 
 (defn clean-build [{:keys [output-to output-dir] :as build-options}]
