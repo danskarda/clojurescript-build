@@ -175,16 +175,17 @@
         conditional-build! (make-conditional-builder (or builder build-once))
         break-loop-ch      (chan)]
     ;; prevent clj-reload on first pass
-    (go-loop [builds (mapv #(assoc % :reload-clj-files false) 
-                           (mapv prep-build builds))] 
+    (go-loop [prevent-clj-reload? true
+              builds (mapv prep-build builds)]
       (let [[v ch] (alts! [(timeout wait-time) break-loop-ch])]
         (when (not= ch break-loop-ch)
           (when each-iteration-hook
             (doseq [b builds]
-              (each-iteration-hook opts b)))
-          (recur
-           (mapv #(assoc % :reload-clj-files true)
-                 (mapv conditional-build! builds))))))
+              (each-iteration-hook opts
+                                   (if prevent-clj-reload?
+                                     (assoc b :reload-clj-files false)
+                                     b))))
+          (recur false (mapv conditional-build! builds)))))
     (assoc opts :break-loop-ch break-loop-ch)))
 
 (defn autobuild
